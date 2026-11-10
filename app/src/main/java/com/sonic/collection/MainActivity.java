@@ -24,8 +24,11 @@ import java.io.File;
 public class MainActivity extends Activity {
 
     static final String[] NAMES   = {"Sonic 1", "Sonic 2", "Sonic CD"};
-    static final String[] FOLDERS = {"Sonic1SIR", "Sonic2", "SonicCD"};
-    static final String[] PKGS    = {"com.sonic1.sir", "com.sonic2.coll", "com.soniccd.coll"};
+    static final String[] FOLDERS = {
+            "SonicCollectionLauncher/Sonic1",
+            "SonicCollectionLauncher/Sonic2",
+            "SonicCollectionLauncher/SonicCD"};
+    static final String[] PKGS    = {"com.decomp.rsdkv4", "com.decomp.sonic2", "com.decomp.soniccd"};
 
     final TextView[] status = new TextView[3];
     Button accessBtn;
@@ -144,7 +147,7 @@ public class MainActivity extends Activity {
             boolean installed = isInstalled(PKGS[i]);
 
             String text = (hasData ? "Data.rsdk: OK" : "Data.rsdk: faltando em " + FOLDERS[i])
-                    + "  |  " + (installed ? "Jogo instalado" : "Jogo não instalado");
+                    + "\n" + (installed ? "Jogo instalado" : "Jogo não instalado");
             status[i].setText(text);
             status[i].setTextColor(hasData && installed
                     ? Color.rgb(120, 220, 140)

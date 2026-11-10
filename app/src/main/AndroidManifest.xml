@@ -6,9 +6,9 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <queries>
-        <package android:name="com.sonic1.sir" />
-        <package android:name="com.sonic2.coll" />
-        <package android:name="com.soniccd.coll" />
+        <package android:name="com.decomp.rsdkv4" />
+        <package android:name="com.decomp.sonic2" />
+        <package android:name="com.decomp.soniccd" />
     </queries>
 
     <application
