@@ -1,1 +1,3 @@
 include ':app'
+include ':v3'
+project(':v3').projectDir = new File(settingsDir, '../RSDKv3-Decompilation/android/app')

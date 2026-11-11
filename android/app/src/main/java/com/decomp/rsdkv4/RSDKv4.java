@@ -10,7 +10,7 @@ import org.libsdl.app.*;
 public class RSDKv4 extends SDLActivity {
 
     // Pasta do jogo (dentro do armazenamento). O menu manda a pasta certa pelo Intent.
-    private String pastaJogo = "SonicCollectionLauncher/Sonic1";
+    private String pastaJogo = "SonicOriginsMOBILE/Sonic1";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

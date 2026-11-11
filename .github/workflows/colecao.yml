@@ -1,4 +1,4 @@
-name: Build Sonic Collection (Android APK)
+name: Build Sonic Origins Mobile (Android APK)
 
 on:
   workflow_dispatch:
@@ -23,26 +23,8 @@ jobs:
       - name: Baixar dependencias Android (SDL2, libogg, libvorbis)
         run: |
           set -e
+          . "$GITHUB_WORKSPACE/.github/baixar.sh"
           cd dependencies/android
-
-          # uso: baixar ARQUIVO SHA256_OU_VAZIO URL1 URL2 ...
-          baixar() {
-            destino="$1"; sha="$2"; shift 2
-            for url in "$@"; do
-              echo "Baixando $url"
-              rm -f "$destino"
-              if wget -nv --tries=3 --timeout=30 --retry-connrefused --waitretry=5 "$url" -O "$destino"; then
-                if [ -z "$sha" ] || echo "$sha  $destino" | sha256sum -c -; then
-                  return 0
-                fi
-                echo "Checksum nao confere, tentando o proximo endereco"
-              else
-                echo "Falhou, tentando o proximo endereco"
-              fi
-            done
-            echo "ERRO: nao consegui baixar $destino"
-            return 1
-          }
 
           baixar sdl.zip "" \
             https://github.com/libsdl-org/SDL/releases/download/release-2.28.3/SDL2-2.28.3.zip
@@ -74,16 +56,46 @@ jobs:
           ln -s ../../../dependencies/android/SDL SDL
           ls -la
 
+      - name: Preparar o motor do Sonic CD (RSDKv3)
+        run: |
+          set -e
+          . "$GITHUB_WORKSPACE/.github/baixar.sh"
+          cd RSDKv3-Decompilation/dependencies/android
+
+          # SDL, libogg e libvorbis sao os mesmos do RSDKv4
+          rm -rf SDL libogg libvorbis
+          ln -s ../../../dependencies/android/SDL SDL
+          ln -s ../../../dependencies/android/libogg libogg
+          ln -s ../../../dependencies/android/libvorbis libvorbis
+
+          # libtheora (videos) so o RSDKv3 usa
+          baixar theora.tar.gz "" \
+            https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.gz \
+            https://ftp.osuosl.org/pub/xiph/releases/theora/libtheora-1.1.1.tar.gz
+          tar xzf theora.tar.gz
+          rm -rf libtheora
+          mv libtheora-1.1.1 libtheora
+
+          cd ../../android/app/jni
+          rm -rf SDL src
+          ln -s ../../../dependencies/android/SDL SDL
+          ln -s ../../.. src
+          ls -la
+
       - name: Diagnostico (arquivos e CMakeLists)
         run: |
           echo "--- dependencies/android ---"
           ls dependencies/android
-          echo "--- jni ---"
+          echo "--- jni (RSDKv4) ---"
           ls -la android/app/jni
+          echo "--- jni (RSDKv3) ---"
+          ls -la RSDKv3-Decompilation/android/app/jni
+          echo "--- RSDKv3 dependencies/android ---"
+          ls -la RSDKv3-Decompilation/dependencies/android
+          echo "--- nome da biblioteca do RSDKv3 ---"
+          grep -n "OUTPUT_NAME" RSDKv3-Decompilation/CMakeLists.txt
           echo "--- java SDL no projeto ---"
           find android/app/src -name "SDLActivity*" | head
-          echo "--- CMakeLists.txt linhas 95-140 ---"
-          sed -n '95,140p' CMakeLists.txt
 
       - name: Build APK (debug)
         working-directory: android
@@ -91,8 +103,14 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
+      - name: Bibliotecas nativas dentro do APK
+        run: |
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n 1)
+          echo "$APK"
+          unzip -l "$APK" | grep -E 'lib/.*\.so' || true
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sonic-Collection-apk
+          name: Sonic-Origins-Mobile-apk
           path: android/app/build/outputs/apk/**/*.apk

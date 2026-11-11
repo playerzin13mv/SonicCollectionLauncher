@@ -66,3 +66,16 @@ android {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
 }
+
+
+// --- Sonic CD (RSDKv3) no mesmo APK ---
+android {
+    packagingOptions {
+        pickFirst '**/libSDL2.so'
+        pickFirst '**/libhidapi.so'
+    }
+}
+
+dependencies {
+    implementation project(':v3')
+}
