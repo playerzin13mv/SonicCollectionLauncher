@@ -44,12 +44,13 @@ public class Inicio extends Activity {
 
         LinearLayout raiz = new LinearLayout(this);
         raiz.setOrientation(LinearLayout.VERTICAL);
-        raiz.setPadding(dp(20), dp(28), dp(20), dp(28));
+        raiz.setGravity(Gravity.CENTER_VERTICAL);
+        raiz.setPadding(dp(24), dp(14), dp(24), dp(14));
 
         TextView titulo = new TextView(this);
-        titulo.setText("SONIC COLLECTION");
+        titulo.setText("SONIC ORIGINS (UNOFFICIAL)");
         titulo.setTextColor(Color.WHITE);
-        titulo.setTextSize(28);
+        titulo.setTextSize(24);
         titulo.setTypeface(Typeface.DEFAULT_BOLD);
         titulo.setGravity(Gravity.CENTER);
         raiz.addView(titulo);
@@ -57,9 +58,9 @@ public class Inicio extends Activity {
         TextView sub = new TextView(this);
         sub.setText("Coloque o seu Data.rsdk na pasta de cada jogo");
         sub.setTextColor(Color.rgb(170, 180, 220));
-        sub.setTextSize(14);
+        sub.setTextSize(13);
         sub.setGravity(Gravity.CENTER);
-        sub.setPadding(0, dp(4), 0, dp(20));
+        sub.setPadding(0, dp(4), 0, dp(8));
         raiz.addView(sub);
 
         botaoAcesso = new Button(this);
@@ -71,12 +72,23 @@ public class Inicio extends Activity {
         });
         raiz.addView(botaoAcesso);
 
+        // Os 3 jogos lado a lado (tela na horizontal)
+        LinearLayout linha = new LinearLayout(this);
+        linha.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams lpLinha = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpLinha.topMargin = dp(10);
+        raiz.addView(linha, lpLinha);
+
         for (int i = 0; i < 3; i++) {
             final int idx = i;
 
+            LinearLayout coluna = new LinearLayout(this);
+            coluna.setOrientation(LinearLayout.VERTICAL);
+
             Button b = new Button(this);
             b.setText(NOMES[i]);
-            b.setTextSize(22);
+            b.setTextSize(20);
             b.setAllCaps(false);
             b.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
@@ -84,18 +96,20 @@ public class Inicio extends Activity {
                 }
             });
             botoes[i] = b;
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
-            lp.topMargin = dp(14);
-            raiz.addView(b, lp);
+            coluna.addView(b, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(84)));
 
             TextView st = new TextView(this);
-            st.setTextSize(13);
+            st.setTextSize(12);
             st.setGravity(Gravity.CENTER);
             st.setPadding(0, dp(4), 0, 0);
             status[i] = st;
-            raiz.addView(st);
+            coluna.addView(st);
+
+            LinearLayout.LayoutParams lpCol = new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lpCol.setMargins(dp(6), 0, dp(6), 0);
+            linha.addView(coluna, lpCol);
         }
 
         ScrollView sv = new ScrollView(this);
