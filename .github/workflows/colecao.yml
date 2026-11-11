@@ -60,6 +60,8 @@ jobs:
         run: |
           set -e
           . "$GITHUB_WORKSPACE/.github/baixar.sh"
+          test -f RSDKv3-Decompilation/dependencies/all/theoraplay/theoraplay.c
+          test -f RSDKv3-Decompilation/dependencies/all/tinyxml2/tinyxml2.cpp
           cd RSDKv3-Decompilation/dependencies/android
 
           # SDL, libogg e libvorbis sao os mesmos do RSDKv4
@@ -92,6 +94,8 @@ jobs:
           ls -la RSDKv3-Decompilation/android/app/jni
           echo "--- RSDKv3 dependencies/android ---"
           ls -la RSDKv3-Decompilation/dependencies/android
+          echo "--- RSDKv3 dependencies/all ---"
+          ls -la RSDKv3-Decompilation/dependencies/all
           echo "--- nome da biblioteca do RSDKv3 ---"
           grep -n "OUTPUT_NAME" RSDKv3-Decompilation/CMakeLists.txt
           echo "--- java SDL no projeto ---"
