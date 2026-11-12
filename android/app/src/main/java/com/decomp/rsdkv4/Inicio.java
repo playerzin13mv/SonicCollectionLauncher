@@ -81,6 +81,7 @@ public class Inicio extends Activity {
     private Button botaoDir;
     private Button botaoAcesso;
     private Button botaoMusica;
+    private Button bRender;
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density);
@@ -205,12 +206,18 @@ public class Inicio extends Activity {
             }
         });
         bLogo.setText("Trocar logo");
+        bRender = pequeno(new View.OnClickListener() {
+            public void onClick(View v) {
+                alternarRender();
+            }
+        });
         LinearLayout.LayoutParams lpPeq = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         lpPeq.setMargins(dp(3), 0, dp(3), 0);
         linhaBotoes.addView(bMods, lpPeq);
         linhaBotoes.addView(bCapa, lpPeq);
         linhaBotoes.addView(bLogo, lpPeq);
+        linhaBotoes.addView(bRender, lpPeq);
         LinearLayout.LayoutParams lpLinha = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lpLinha.topMargin = dp(8);
@@ -537,6 +544,21 @@ public class Inicio extends Activity {
     // ------------------------------------------------------------------
     // Mods
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // Renderizador do Sonic CD (HW = hardware, SW = software)
+    // ------------------------------------------------------------------
+    private void atualizarBotaoRender() {
+        bRender.setText(prefs.getBoolean("hw", true) ? "Render: HW" : "Render: SW");
+    }
+
+    private void alternarRender() {
+        boolean hw = !prefs.getBoolean("hw", true);
+        prefs.edit().putBoolean("hw", hw).apply();
+        atualizarBotaoRender();
+        Toast.makeText(this, hw ? "Sonic CD: renderizador de hardware (HW)"
+                : "Sonic CD: renderizador de software (SW)", Toast.LENGTH_SHORT).show();
+    }
+
     private void abrirMods() {
         if (!temAcesso()) {
             pedirAcesso();
@@ -622,6 +644,10 @@ public class Inicio extends Activity {
         }
         pontos.setText(sb.toString());
 
+        // Só o Sonic CD tem a opção de renderizador
+        bRender.setVisibility(atual == 2 ? View.VISIBLE : View.GONE);
+        atualizarBotaoRender();
+
         carregarCapa();
         carregarLogo();
         atualizarStatus();
@@ -661,9 +687,10 @@ public class Inicio extends Activity {
             return;
         }
 
-        // Sonic CD: liga o HardwareRenderer (necessário para os dados de celular)
+        // Sonic CD: aplica a escolha de renderizador (HW é o necessário para dados de celular)
         if (atual == 2) {
-            definirIni(new File(pasta(2), "settings.ini"), "Window", "HardwareRenderer", "y");
+            definirIni(new File(pasta(2), "settings.ini"), "Window", "HardwareRenderer",
+                    prefs.getBoolean("hw", true) ? "y" : "n");
         }
 
         Intent it = new Intent(this, (atual == 2) ? RSDKv3.class : RSDKv4.class);
