@@ -3,12 +3,15 @@ package com.decomp.rsdkv4;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.SurfaceTexture;
 import android.graphics.Typeface;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -18,6 +21,8 @@ import android.os.Environment;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -27,10 +32,16 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Inicio extends Activity {
 
@@ -39,7 +50,10 @@ public class Inicio extends Activity {
     private static final String[] PASTAS = {RAIZ + "/Sonic1", RAIZ + "/Sonic2", RAIZ + "/SonicCD"};
     private static final String PASTA_VISUAL = RAIZ + "/Visual";
     private static final int REQ_CAPA = 100;   // + indice do jogo (100, 101, 102)
+    private static final int REQ_LOGO = 150;   // + indice do jogo (150, 151, 152)
     private static final int REQ_MUSICA = 200;
+    private static final int REQ_FUNDO = 300;
+    private static final int REQ_AVISO = 400;
 
     private int atual = 0;
     private boolean pediuAcesso = false;
@@ -49,13 +63,20 @@ public class Inicio extends Activity {
     private SharedPreferences prefs;
     private GestureDetector gestos;
 
+    // vídeo de fundo
+    private TextureView fundo;
+    private Surface superficie;
+    private MediaPlayer videoPlayer;
+    private int videoW = 0;
+    private int videoH = 0;
+
     private LinearLayout pagina;
     private ImageView capa;
+    private ImageView logo;
     private TextView titulo;
     private TextView status;
     private TextView pontos;
     private Button botaoJogar;
-    private Button botaoCapa;
     private Button botaoEsq;
     private Button botaoDir;
     private Button botaoAcesso;
@@ -66,7 +87,7 @@ public class Inicio extends Activity {
     }
 
     // ------------------------------------------------------------------
-    // Montagem da tela (horizontal): capa + informações, setas dos lados
+    // Montagem da tela (horizontal): fundo em vídeo, capa + informações, setas
     // ------------------------------------------------------------------
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +97,42 @@ public class Inicio extends Activity {
 
         FrameLayout raiz = new FrameLayout(this);
         raiz.setBackgroundColor(Color.parseColor("#0B1A6B"));
+
+        // Vídeo de fundo (o arquivo é o que VOCÊ escolhe) + camada escura para dar leitura
+        fundo = new TextureView(this);
+        fundo.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override
+            public void onSurfaceTextureAvailable(SurfaceTexture st, int w, int h) {
+                superficie = new Surface(st);
+                iniciarVideo();
+            }
+
+            @Override
+            public void onSurfaceTextureSizeChanged(SurfaceTexture st, int w, int h) {
+                ajustarVideo();
+            }
+
+            @Override
+            public boolean onSurfaceTextureDestroyed(SurfaceTexture st) {
+                pararVideo();
+                if (superficie != null) {
+                    superficie.release();
+                    superficie = null;
+                }
+                return true;
+            }
+
+            @Override
+            public void onSurfaceTextureUpdated(SurfaceTexture st) {
+            }
+        });
+        raiz.addView(fundo, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        View sombra = new View(this);
+        sombra.setBackgroundColor(Color.parseColor("#55000000"));
+        raiz.addView(sombra, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // Página do jogo atual
         pagina = new LinearLayout(this);
@@ -97,6 +154,12 @@ public class Inicio extends Activity {
         pagina.addView(info, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        // Logo do jogo (imagem que VOCÊ escolhe); sem logo, aparece o nome em texto
+        logo = new ImageView(this);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        info.addView(logo, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(80)));
+
         titulo = new TextView(this);
         titulo.setTextColor(Color.WHITE);
         titulo.setTextSize(26);
@@ -107,7 +170,7 @@ public class Inicio extends Activity {
         status = new TextView(this);
         status.setTextSize(13);
         status.setGravity(Gravity.CENTER);
-        status.setPadding(0, dp(6), 0, dp(14));
+        status.setPadding(0, dp(6), 0, dp(12));
         info.addView(status);
 
         botaoJogar = new Button(this);
@@ -119,20 +182,39 @@ public class Inicio extends Activity {
             }
         });
         info.addView(botaoJogar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(64)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
 
-        botaoCapa = new Button(this);
-        botaoCapa.setTextSize(13);
-        botaoCapa.setAllCaps(false);
-        botaoCapa.setOnClickListener(new View.OnClickListener() {
+        // Linha de botões pequenos: Mods | Trocar capa | Trocar logo
+        LinearLayout linhaBotoes = new LinearLayout(this);
+        linhaBotoes.setOrientation(LinearLayout.HORIZONTAL);
+        Button bMods = pequeno(new View.OnClickListener() {
+            public void onClick(View v) {
+                abrirMods();
+            }
+        });
+        bMods.setText("Mods");
+        Button bCapa = pequeno(new View.OnClickListener() {
             public void onClick(View v) {
                 escolherArquivo("image/*", REQ_CAPA + atual);
             }
         });
-        LinearLayout.LayoutParams lpCapa = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        lpCapa.topMargin = dp(10);
-        info.addView(botaoCapa, lpCapa);
+        bCapa.setText("Trocar capa");
+        Button bLogo = pequeno(new View.OnClickListener() {
+            public void onClick(View v) {
+                escolherArquivo("image/*", REQ_LOGO + atual);
+            }
+        });
+        bLogo.setText("Trocar logo");
+        LinearLayout.LayoutParams lpPeq = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        lpPeq.setMargins(dp(3), 0, dp(3), 0);
+        linhaBotoes.addView(bMods, lpPeq);
+        linhaBotoes.addView(bCapa, lpPeq);
+        linhaBotoes.addView(bLogo, lpPeq);
+        LinearLayout.LayoutParams lpLinha = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lpLinha.topMargin = dp(8);
+        info.addView(linhaBotoes, lpLinha);
 
         // Setas dos lados
         botaoEsq = seta("<", -1);
@@ -150,18 +232,19 @@ public class Inicio extends Activity {
         // Título do app (topo)
         TextView topo = new TextView(this);
         topo.setText("SONIC ORIGINS (UNOFFICIAL)");
-        topo.setTextColor(Color.rgb(170, 180, 220));
+        topo.setTextColor(Color.rgb(200, 210, 240));
         topo.setTextSize(13);
         topo.setTypeface(Typeface.DEFAULT_BOLD);
         FrameLayout.LayoutParams lpTopo = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                Gravity.TOP | Gravity.LEFT);
         lpTopo.topMargin = dp(10);
+        lpTopo.leftMargin = dp(12);
         raiz.addView(topo, lpTopo);
 
-        // Botões de música (topo, direita)
-        LinearLayout barraMusica = new LinearLayout(this);
-        barraMusica.setOrientation(LinearLayout.HORIZONTAL);
+        // Botões de música e fundo (topo, direita)
+        LinearLayout barraTopo = new LinearLayout(this);
+        barraTopo.setOrientation(LinearLayout.HORIZONTAL);
         botaoMusica = pequeno(new View.OnClickListener() {
             public void onClick(View v) {
                 alternarMusica();
@@ -173,14 +256,28 @@ public class Inicio extends Activity {
             }
         });
         trocarMusica.setText("Trocar música");
-        barraMusica.addView(botaoMusica);
-        barraMusica.addView(trocarMusica);
-        FrameLayout.LayoutParams lpMus = new FrameLayout.LayoutParams(
+        Button trocarFundo = pequeno(new View.OnClickListener() {
+            public void onClick(View v) {
+                escolherArquivo("video/*", REQ_FUNDO);
+            }
+        });
+        trocarFundo.setText("Trocar fundo");
+        barraTopo.addView(botaoMusica);
+        barraTopo.addView(trocarMusica);
+        Button logoAviso = pequeno(new View.OnClickListener() {
+            public void onClick(View v) {
+                escolherArquivo("image/*", REQ_AVISO);
+            }
+        });
+        logoAviso.setText("Logo do aviso");
+        barraTopo.addView(trocarFundo);
+        barraTopo.addView(logoAviso);
+        FrameLayout.LayoutParams lpBarra = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.RIGHT);
-        lpMus.topMargin = dp(4);
-        lpMus.rightMargin = dp(8);
-        raiz.addView(barraMusica, lpMus);
+        lpBarra.topMargin = dp(4);
+        lpBarra.rightMargin = dp(8);
+        raiz.addView(barraTopo, lpBarra);
 
         // Pontinhos (qual jogo está na tela)
         pontos = new TextView(this);
@@ -262,7 +359,7 @@ public class Inicio extends Activity {
         b.setMinimumHeight(0);
         b.setMinWidth(0);
         b.setMinimumWidth(0);
-        b.setPadding(dp(10), dp(6), dp(10), dp(6));
+        b.setPadding(dp(8), dp(6), dp(8), dp(6));
         b.setOnClickListener(l);
         return b;
     }
@@ -281,18 +378,21 @@ public class Inicio extends Activity {
         }
         mostrarJogo();
         tocarMusica();
+        iniciarVideo();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         pararMusica();
+        pararVideo();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         pararMusica();
+        pararVideo();
     }
 
     // ------------------------------------------------------------------
@@ -318,8 +418,20 @@ public class Inicio extends Activity {
         return new File(pastaVisual(), "capa" + i + ".img");
     }
 
+    private File arquivoLogo(int i) {
+        return new File(pastaVisual(), "logo" + i + ".img");
+    }
+
     private File arquivoMusica() {
         return new File(pastaVisual(), "musica.audio");
+    }
+
+    private File arquivoFundo() {
+        return new File(pastaVisual(), "fundo.video");
+    }
+
+    private File arquivoAviso() {
+        return new File(pastaVisual(), "aviso.img");
     }
 
     private boolean temAcesso() {
@@ -354,6 +466,118 @@ public class Inicio extends Activity {
                     Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // settings.ini do jogo (usado para ligar o HardwareRenderer e o Dev Menu)
+    // ------------------------------------------------------------------
+    private void definirIni(File ini, String secao, String chave, String valor) {
+        try {
+            ArrayList<String> linhas = new ArrayList<String>();
+            if (ini.exists()) {
+                BufferedReader br = new BufferedReader(
+                        new InputStreamReader(new FileInputStream(ini), "UTF-8"));
+                String l;
+                while ((l = br.readLine()) != null) {
+                    linhas.add(l);
+                }
+                br.close();
+            }
+
+            int iSecao = -1;
+            for (int i = 0; i < linhas.size(); i++) {
+                if (linhas.get(i).trim().equalsIgnoreCase("[" + secao + "]")) {
+                    iSecao = i;
+                    break;
+                }
+            }
+
+            if (iSecao < 0) {
+                if (!linhas.isEmpty() && linhas.get(linhas.size() - 1).trim().length() > 0) {
+                    linhas.add("");
+                }
+                linhas.add("[" + secao + "]");
+                linhas.add(chave + "=" + valor);
+            } else {
+                int fim = linhas.size();
+                for (int i = iSecao + 1; i < linhas.size(); i++) {
+                    if (linhas.get(i).trim().startsWith("[")) {
+                        fim = i;
+                        break;
+                    }
+                }
+                boolean achou = false;
+                for (int i = iSecao + 1; i < fim; i++) {
+                    String t = linhas.get(i).trim();
+                    int eq = t.indexOf('=');
+                    if (eq > 0 && t.substring(0, eq).trim().equalsIgnoreCase(chave)) {
+                        // mantém a grafia da chave que já estava no arquivo
+                        linhas.set(i, t.substring(0, eq).trim() + "=" + valor);
+                        achou = true;
+                        break;
+                    }
+                }
+                if (!achou) {
+                    linhas.add(iSecao + 1, chave + "=" + valor);
+                }
+            }
+
+            ini.getParentFile().mkdirs();
+            OutputStreamWriter w = new OutputStreamWriter(new FileOutputStream(ini), "UTF-8");
+            for (int i = 0; i < linhas.size(); i++) {
+                w.write(linhas.get(i));
+                w.write("\n");
+            }
+            w.close();
+        } catch (Exception e) {
+            Toast.makeText(this, "Não consegui editar o settings.ini", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Mods
+    // ------------------------------------------------------------------
+    private void abrirMods() {
+        if (!temAcesso()) {
+            pedirAcesso();
+            return;
+        }
+        File dir = new File(pasta(atual), "mods");
+        dir.mkdirs();
+
+        StringBuilder lista = new StringBuilder();
+        int n = 0;
+        File[] subs = dir.listFiles();
+        if (subs != null) {
+            Arrays.sort(subs);
+            for (int i = 0; i < subs.length; i++) {
+                if (subs[i].isDirectory()) {
+                    lista.append("\u2022 ").append(subs[i].getName()).append("\n");
+                    n++;
+                }
+            }
+        }
+
+        String msg = "Pasta dos mods:\n" + dir.getAbsolutePath() + "/\n\n";
+        if (n == 0) {
+            msg += "Nenhum mod encontrado. Coloque cada mod numa pasta aqui dentro (a pasta do mod tem o mod.ini).\n";
+        } else {
+            msg += "Mods encontrados:\n" + lista;
+        }
+        msg += "\nPara ligar ou desligar um mod, ative o Dev Menu (botão abaixo), abra o jogo, "
+                + "abra o Dev Menu e escolha Mods.";
+
+        new AlertDialog.Builder(this)
+                .setTitle("Mods - " + JOGOS[atual])
+                .setMessage(msg)
+                .setPositiveButton("Ativar Dev Menu", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) {
+                        definirIni(new File(pasta(atual), "settings.ini"), "Dev", "DevMenu", "y");
+                        Toast.makeText(Inicio.this, "Dev Menu ativado", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Fechar", null)
+                .show();
     }
 
     // ------------------------------------------------------------------
@@ -399,6 +623,7 @@ public class Inicio extends Activity {
         pontos.setText(sb.toString());
 
         carregarCapa();
+        carregarLogo();
         atualizarStatus();
         atualizarBotaoMusica();
     }
@@ -436,39 +661,62 @@ public class Inicio extends Activity {
             return;
         }
 
+        // Sonic CD: liga o HardwareRenderer (necessário para os dados de celular)
+        if (atual == 2) {
+            definirIni(new File(pasta(2), "settings.ini"), "Window", "HardwareRenderer", "y");
+        }
+
         Intent it = new Intent(this, (atual == 2) ? RSDKv3.class : RSDKv4.class);
         it.putExtra("pasta", PASTAS[atual]);
         startActivity(it);
     }
 
     // ------------------------------------------------------------------
-    // Capas (imagens que VOCÊ escolhe; ficam na pasta Visual, fora do APK)
+    // Capas e logos (imagens que VOCÊ escolhe; ficam na pasta Visual)
     // ------------------------------------------------------------------
     private void carregarCapa() {
         Bitmap bmp = null;
         if (temAcesso()) {
             File f = arquivoCapa(atual);
             if (f.exists()) {
-                bmp = decodificar(f.getAbsolutePath());
+                bmp = decodificar(f.getAbsolutePath(), 1);
             }
         }
         if (bmp != null) {
             capa.setBackgroundColor(Color.TRANSPARENT);
             capa.setImageBitmap(bmp);
-            botaoCapa.setText("Trocar capa");
         } else {
             capa.setImageDrawable(null);
-            capa.setBackgroundColor(Color.parseColor("#14309E"));
-            botaoCapa.setText("Escolher capa");
+            capa.setBackgroundColor(Color.parseColor("#9914309E"));
         }
     }
 
-    private Bitmap decodificar(String caminho) {
+    private void carregarLogo() {
+        Bitmap bmp = null;
+        if (temAcesso()) {
+            File f = arquivoLogo(atual);
+            if (f.exists()) {
+                bmp = decodificar(f.getAbsolutePath(), 2);
+            }
+        }
+        if (bmp != null) {
+            logo.setImageBitmap(bmp);
+            logo.setVisibility(View.VISIBLE);
+            titulo.setVisibility(View.GONE);
+        } else {
+            logo.setImageDrawable(null);
+            logo.setVisibility(View.GONE);
+            titulo.setVisibility(View.VISIBLE);
+        }
+    }
+
+    // reducao: 1 = altura da tela; 2 = metade da altura da tela
+    private Bitmap decodificar(String caminho, int reducao) {
         try {
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(caminho, o);
-            int alvo = Math.max(600, getResources().getDisplayMetrics().heightPixels);
+            int alvo = Math.max(300, getResources().getDisplayMetrics().heightPixels / reducao);
             int amostra = 1;
             while (o.outHeight / (amostra * 2) >= alvo) {
                 amostra *= 2;
@@ -504,23 +752,65 @@ public class Inicio extends Activity {
         }
         Uri uri = data.getData();
         if (req >= REQ_CAPA && req < REQ_CAPA + JOGOS.length) {
-            int jogo = req - REQ_CAPA;
-            if (copiar(uri, arquivoCapa(jogo)) && jogo == atual) {
-                carregarCapa();
-            }
+            copiarEm(uri, arquivoCapa(req - REQ_CAPA), new Runnable() {
+                public void run() {
+                    carregarCapa();
+                }
+            });
+        } else if (req >= REQ_LOGO && req < REQ_LOGO + JOGOS.length) {
+            copiarEm(uri, arquivoLogo(req - REQ_LOGO), new Runnable() {
+                public void run() {
+                    carregarLogo();
+                }
+            });
         } else if (req == REQ_MUSICA) {
-            if (copiar(uri, arquivoMusica())) {
-                musicaLigada = true;
-                prefs.edit().putBoolean("musica", true).apply();
-                atualizarBotaoMusica();
-                tocarMusica();
-            }
+            copiarEm(uri, arquivoMusica(), new Runnable() {
+                public void run() {
+                    musicaLigada = true;
+                    prefs.edit().putBoolean("musica", true).apply();
+                    atualizarBotaoMusica();
+                    tocarMusica();
+                }
+            });
+        } else if (req == REQ_FUNDO) {
+            copiarEm(uri, arquivoFundo(), new Runnable() {
+                public void run() {
+                    iniciarVideo();
+                }
+            });
+        } else if (req == REQ_AVISO) {
+            copiarEm(uri, arquivoAviso(), new Runnable() {
+                public void run() {
+                    Toast.makeText(Inicio.this, "Logo do aviso salvo", Toast.LENGTH_SHORT).show();
+                }
+            });
         }
+    }
+
+    // Copia em segundo plano (vídeos podem ser grandes) e depois executa "depois" na tela
+    private void copiarEm(final Uri origem, final File destino, final Runnable depois) {
+        Toast.makeText(this, "Copiando...", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            public void run() {
+                final boolean ok = copiar(origem, destino);
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (ok) {
+                            depois.run();
+                        } else {
+                            Toast.makeText(Inicio.this, "Não consegui copiar o arquivo",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    }
+                });
+            }
+        }).start();
     }
 
     private boolean copiar(Uri origem, File destino) {
         InputStream in = null;
         OutputStream out = null;
+        boolean ok = false;
         try {
             destino.getParentFile().mkdirs();
             in = getContentResolver().openInputStream(origem);
@@ -531,10 +821,9 @@ public class Inicio extends Activity {
                 out.write(buf, 0, n);
             }
             out.flush();
-            return true;
+            ok = true;
         } catch (Exception e) {
-            Toast.makeText(this, "Não consegui copiar o arquivo", Toast.LENGTH_LONG).show();
-            return false;
+            ok = false;
         } finally {
             try {
                 if (in != null) {
@@ -549,6 +838,10 @@ public class Inicio extends Activity {
             } catch (Exception e) {
             }
         }
+        if (!ok) {
+            destino.delete();
+        }
+        return ok;
     }
 
     // ------------------------------------------------------------------
@@ -606,5 +899,70 @@ public class Inicio extends Activity {
             }
             player = null;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Vídeo de fundo (arquivo que VOCÊ escolhe; toca em loop e sem som)
+    // ------------------------------------------------------------------
+    private void iniciarVideo() {
+        pararVideo();
+        if (superficie == null || !temAcesso()) {
+            return;
+        }
+        File f = arquivoFundo();
+        if (!f.exists()) {
+            return;
+        }
+        try {
+            videoPlayer = new MediaPlayer();
+            videoPlayer.setSurface(superficie);
+            videoPlayer.setDataSource(f.getAbsolutePath());
+            videoPlayer.setLooping(true);
+            videoPlayer.setVolume(0f, 0f);
+            videoPlayer.setOnVideoSizeChangedListener(new MediaPlayer.OnVideoSizeChangedListener() {
+                public void onVideoSizeChanged(MediaPlayer mp, int w, int h) {
+                    videoW = w;
+                    videoH = h;
+                    ajustarVideo();
+                }
+            });
+            videoPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                public void onPrepared(MediaPlayer mp) {
+                    mp.start();
+                }
+            });
+            videoPlayer.prepareAsync();
+        } catch (Exception e) {
+            pararVideo();
+        }
+    }
+
+    private void pararVideo() {
+        if (videoPlayer != null) {
+            try {
+                videoPlayer.stop();
+            } catch (Exception e) {
+            }
+            try {
+                videoPlayer.release();
+            } catch (Exception e) {
+            }
+            videoPlayer = null;
+        }
+    }
+
+    // Preenche a tela inteira cortando as sobras (sem esticar o vídeo)
+    private void ajustarVideo() {
+        int vw = fundo.getWidth();
+        int vh = fundo.getHeight();
+        if (videoW <= 0 || videoH <= 0 || vw <= 0 || vh <= 0) {
+            return;
+        }
+        float escala = Math.max((float) vw / videoW, (float) vh / videoH);
+        float sx = (videoW * escala) / vw;
+        float sy = (videoH * escala) / vh;
+        Matrix m = new Matrix();
+        m.setScale(sx, sy, vw / 2f, vh / 2f);
+        fundo.setTransform(m);
     }
 }
