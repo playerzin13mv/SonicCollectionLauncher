@@ -33,16 +33,13 @@
     <application
         android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:allowBackup="true" android:theme="@style/AppTheme" android:hardwareAccelerated="true" android:requestLegacyExternalStorage="true" android:appCategory="game">
 
-        <!-- Tela de aviso (primeira tela do app) -->
-        <activity android:name="com.decomp.rsdkv4.Aviso" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:exported="true" android:screenOrientation="sensorLandscape" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <!-- App: créditos, tela Start e menu (tudo na mesma tela, com o vídeo de fundo por baixo) -->
+        <activity android:name="com.decomp.rsdkv4.Inicio" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:exported="true" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|layoutDirection|locale" android:theme="@style/TemaOrigins">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-
-        <!-- Menu da coleção -->
-        <activity android:name="com.decomp.rsdkv4.Inicio" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:exported="false" android:screenOrientation="sensorLandscape" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>
 
         <!-- Motor do jogo, em processo separado -->
         <activity android:name="com.decomp.rsdkv4.RSDKv4" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:process=":game" android:alwaysRetainTaskState="true" android:launchMode="singleInstance" android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation">
