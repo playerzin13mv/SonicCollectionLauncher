@@ -3,6 +3,7 @@ package com.decomp.rsdkv4;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -10,8 +11,11 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.SurfaceTexture;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -31,6 +35,8 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -118,21 +124,20 @@ public class Inicio extends Activity {
 
     // tela Start
     private ImageView logoOrigins;
-    private TextView textoOrigins;
-    private TextView subOrigins;
+    private LinearLayout fallbackOrigins;
 
     // menu
-    private LinearLayout pagina;
+    private FrameLayout pagina;
     private ImageView capa;
     private ImageView logo;
     private TextView titulo;
     private TextView status;
-    private TextView pontos;
+    private LinearLayout pontosLayout;
+    private View[] pontosViews;
     private Button botaoEsq;
     private Button botaoDir;
     private Button botaoAcesso;
     private Button botaoMusica;
-    private Button bRender;
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density);
@@ -306,7 +311,7 @@ public class Inicio extends Activity {
         }
     }
 
-    // Vídeo de fundo: é a primeira coisa a carregar (começa por baixo da tela de créditos)
+    // Vídeo de fundo (sem camada escura): é a primeira coisa a carregar, começa por baixo da tela de créditos
     private void construirFundo(FrameLayout raiz) {
         fundo = new TextureView(this);
         fundo.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
@@ -336,11 +341,6 @@ public class Inicio extends Activity {
             }
         });
         raiz.addView(fundo, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        View sombra = new View(this);
-        sombra.setBackgroundColor(Color.parseColor("#55000000"));
-        raiz.addView(sombra, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
@@ -408,42 +408,127 @@ public class Inicio extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    // Tela Start: logo do Sonic Origins + botão START
+    // Ícone redondo dourado dos itens do menu (desenhado no código: 0 = play, 1 = mais)
+    private static class IconeView extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final int tipo;
+
+        IconeView(Context c, int tipo) {
+            super(c);
+            this.tipo = tipo;
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float w = getWidth();
+            float h = getHeight();
+            float r = Math.min(w, h) / 2f;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.parseColor("#F5B800"));
+            c.drawCircle(w / 2f, h / 2f, r, p);
+            p.setColor(Color.parseColor("#0B1A6B"));
+            if (tipo == 0) {
+                path.reset();
+                path.moveTo(w * 0.40f, h * 0.28f);
+                path.lineTo(w * 0.40f, h * 0.72f);
+                path.lineTo(w * 0.74f, h * 0.50f);
+                path.close();
+                c.drawPath(path, p);
+            } else {
+                float e = r * 0.28f;
+                c.drawRect(w / 2f - r * 0.5f, h / 2f - e / 2f, w / 2f + r * 0.5f, h / 2f + e / 2f, p);
+                c.drawRect(w / 2f - e / 2f, h / 2f - r * 0.5f, w / 2f + e / 2f, h / 2f + r * 0.5f, p);
+            }
+        }
+    }
+
+    // Item do menu no estilo do original: barra escura arredondada com ícone dourado
+    private LinearLayout itemMenu(String rotulo, int tipoIcone, boolean destaque, View.OnClickListener l) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(dp(10), 0, dp(14), 0);
+        item.setClickable(true);
+
+        int corNormal = destaque ? Color.parseColor("#E60B1238") : Color.parseColor("#B3000000");
+        int corPress = destaque ? Color.parseColor("#E61B2A6B") : Color.parseColor("#B3303030");
+        int borda = destaque ? Color.parseColor("#FFD23A") : Color.parseColor("#66FFFFFF");
+        int bordaDp = destaque ? 2 : 1;
+
+        StateListDrawable sl = new StateListDrawable();
+        sl.addState(new int[]{android.R.attr.state_pressed},
+                fundoBotao(corPress, corPress, 12, borda, bordaDp));
+        sl.addState(new int[]{},
+                fundoBotao(corNormal, corNormal, 12, borda, bordaDp));
+        item.setBackground(sl);
+
+        IconeView ic = new IconeView(this, tipoIcone);
+        item.addView(ic, new LinearLayout.LayoutParams(dp(30), dp(30)));
+
+        TextView tv = texto(rotulo, 17, Color.WHITE, true);
+        tv.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        tv.setShadowLayer(3f, 0f, 1f, Color.BLACK);
+        tv.setPadding(dp(12), 0, 0, 0);
+        item.addView(tv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        item.setOnClickListener(l);
+        return item;
+    }
+
+    // Tela Start (igual ao original): logo grande no alto, "TAP ANYWHERE" embaixo; tocar em qualquer lugar entra
     private void construirStart(FrameLayout raiz) {
         start = new FrameLayout(this);
         start.setVisibility(View.GONE);
-
-        LinearLayout centro = new LinearLayout(this);
-        centro.setOrientation(LinearLayout.VERTICAL);
-        centro.setGravity(Gravity.CENTER);
-        start.addView(centro, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        logoOrigins = new ImageView(this);
-        logoOrigins.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        centro.addView(logoOrigins, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(170)));
-
-        textoOrigins = texto("SONIC ORIGINS", 40, Color.WHITE, true);
-        textoOrigins.setShadowLayer(8f, 0f, 3f, Color.BLACK);
-        centro.addView(textoOrigins);
-
-        subOrigins = texto("(UNOFFICIAL)", 16, Color.WHITE, true);
-        subOrigins.setShadowLayer(6f, 0f, 2f, Color.BLACK);
-        centro.addView(subOrigins);
-
-        Button botaoStart = new Button(this);
-        botaoStart.setText("START");
-        botaoStart.setTextSize(26);
-        estilizar(botaoStart, ESTILO_PRIMARIO);
-        botaoStart.setOnClickListener(new View.OnClickListener() {
+        start.setClickable(true);
+        start.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 irPara(ESTADO_MENU);
             }
         });
-        LinearLayout.LayoutParams lpStart = new LinearLayout.LayoutParams(dp(260), dp(64));
-        lpStart.topMargin = dp(20);
-        centro.addView(botaoStart, lpStart);
+
+        int alt = getResources().getDisplayMetrics().heightPixels;
+
+        // Logo do Sonic Origins (imagem que VOCÊ escolhe), grande e no alto
+        logoOrigins = new ImageView(this);
+        logoOrigins.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        FrameLayout.LayoutParams lpLogo = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) (alt * 0.64f),
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lpLogo.topMargin = (int) (alt * 0.04f);
+        start.addView(logoOrigins, lpLogo);
+
+        // Sem imagem: nome em texto no mesmo lugar
+        fallbackOrigins = new LinearLayout(this);
+        fallbackOrigins.setOrientation(LinearLayout.VERTICAL);
+        fallbackOrigins.setGravity(Gravity.CENTER);
+        TextView textoOrigins = texto("SONIC ORIGINS", 48, Color.WHITE, true);
+        textoOrigins.setShadowLayer(8f, 0f, 3f, Color.BLACK);
+        TextView subOrigins = texto("(UNOFFICIAL)", 18, Color.WHITE, true);
+        subOrigins.setShadowLayer(6f, 0f, 2f, Color.BLACK);
+        fallbackOrigins.addView(textoOrigins);
+        fallbackOrigins.addView(subOrigins);
+        FrameLayout.LayoutParams lpFb = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) (alt * 0.64f),
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lpFb.topMargin = (int) (alt * 0.04f);
+        start.addView(fallbackOrigins, lpFb);
+
+        // "TAP ANYWHERE" piscando (no lugar do "PRESS X" do original)
+        TextView toque = texto("TAP ANYWHERE", 20, Color.WHITE, true);
+        toque.setLetterSpacing(0.15f);
+        toque.setShadowLayer(8f, 0f, 2f, Color.BLACK);
+        AlphaAnimation piscar = new AlphaAnimation(1f, 0.15f);
+        piscar.setDuration(800);
+        piscar.setRepeatMode(Animation.REVERSE);
+        piscar.setRepeatCount(Animation.INFINITE);
+        toque.startAnimation(piscar);
+        FrameLayout.LayoutParams lpToque = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lpToque.bottomMargin = (int) (alt * 0.09f);
+        start.addView(toque, lpToque);
 
         Button config = pequeno(t("Configurações", "Settings"), new View.OnClickListener() {
             public void onClick(View v) {
@@ -461,114 +546,79 @@ public class Inicio extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    // Menu: um jogo por página (capa à esquerda, informações à direita)
+    // Menu (igual ao original): logo do jogo no alto à esquerda, itens embaixo, capa no alto à direita
     private void construirMenu(FrameLayout raiz) {
         menu = new FrameLayout(this);
         menu.setVisibility(View.GONE);
 
-        pagina = new LinearLayout(this);
-        pagina.setOrientation(LinearLayout.HORIZONTAL);
-        pagina.setGravity(Gravity.CENTER);
-        pagina.setPadding(dp(76), dp(40), dp(76), dp(30));
+        // Página: muda quando passamos de um jogo para o outro
+        pagina = new FrameLayout(this);
         menu.addView(pagina, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        capa = new ImageView(this);
-        capa.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        pagina.addView(capa, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        LinearLayout esquerda = new LinearLayout(this);
+        esquerda.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout.LayoutParams lpEsquerda = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.LEFT);
+        lpEsquerda.leftMargin = dp(28);
+        lpEsquerda.topMargin = dp(12);
+        pagina.addView(esquerda, lpEsquerda);
 
-        LinearLayout info = new LinearLayout(this);
-        info.setOrientation(LinearLayout.VERTICAL);
-        info.setGravity(Gravity.CENTER);
-        info.setPadding(dp(20), 0, 0, 0);
-        pagina.addView(info, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView rotulo = texto("MAIN MENU", 11, Color.WHITE, true);
+        rotulo.setGravity(Gravity.LEFT);
+        rotulo.setShadowLayer(4f, 0f, 1f, Color.BLACK);
+        esquerda.addView(rotulo);
 
         // Logo do jogo (imagem que VOCÊ escolhe); sem logo, aparece o nome em texto
         logo = new ImageView(this);
-        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        info.addView(logo, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(80)));
+        logo.setScaleType(ImageView.ScaleType.FIT_START);
+        LinearLayout.LayoutParams lpLogo = new LinearLayout.LayoutParams(dp(300), dp(96));
+        lpLogo.topMargin = dp(6);
+        esquerda.addView(logo, lpLogo);
 
         titulo = texto("", 26, Color.WHITE, true);
+        titulo.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
         titulo.setShadowLayer(6f, 0f, 2f, Color.BLACK);
-        info.addView(titulo);
+        LinearLayout.LayoutParams lpTitulo = new LinearLayout.LayoutParams(dp(300), dp(96));
+        lpTitulo.topMargin = dp(6);
+        esquerda.addView(titulo, lpTitulo);
 
-        status = texto("", 13, Color.WHITE, true);
-        status.setShadowLayer(4f, 0f, 1f, Color.BLACK);
-        status.setPadding(0, dp(6), 0, dp(12));
-        info.addView(status);
-
-        Button botaoJogar = new Button(this);
-        botaoJogar.setText(t("JOGAR", "PLAY"));
-        botaoJogar.setTextSize(22);
-        estilizar(botaoJogar, ESTILO_PRIMARIO);
-        botaoJogar.setOnClickListener(new View.OnClickListener() {
+        // Itens do menu: START GAME (no lugar do Anniversary Mode) e MODS (no lugar do Classic Mode)
+        LinearLayout itemStart = itemMenu("START GAME", 0, true, new View.OnClickListener() {
             public void onClick(View v) {
                 jogar();
             }
         });
-        info.addView(botaoJogar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
+        LinearLayout.LayoutParams lpItem1 = new LinearLayout.LayoutParams(dp(300), dp(46));
+        lpItem1.topMargin = dp(10);
+        esquerda.addView(itemStart, lpItem1);
 
-        // Linha de botões pequenos: Mods | Trocar capa | Trocar logo | Render (só no CD)
-        LinearLayout linhaBotoes = new LinearLayout(this);
-        linhaBotoes.setOrientation(LinearLayout.HORIZONTAL);
-        Button bMods = pequeno("Mods", new View.OnClickListener() {
+        LinearLayout itemMods = itemMenu("MODS", 1, false, new View.OnClickListener() {
             public void onClick(View v) {
                 abrirMods();
             }
         });
-        Button bCapa = pequeno(t("Trocar capa", "Change cover"), new View.OnClickListener() {
-            public void onClick(View v) {
-                escolherArquivo("image/*", REQ_CAPA + atual);
-            }
-        });
-        Button bLogo = pequeno(t("Trocar logo", "Change logo"), new View.OnClickListener() {
-            public void onClick(View v) {
-                escolherArquivo("image/*", REQ_LOGO + atual);
-            }
-        });
-        bRender = pequeno("", new View.OnClickListener() {
-            public void onClick(View v) {
-                alternarRender();
-            }
-        });
-        LinearLayout.LayoutParams lpPeq = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lpPeq.setMargins(dp(3), 0, dp(3), 0);
-        linhaBotoes.addView(bMods, lpPeq);
-        linhaBotoes.addView(bCapa, lpPeq);
-        linhaBotoes.addView(bLogo, lpPeq);
-        linhaBotoes.addView(bRender, lpPeq);
-        LinearLayout.LayoutParams lpLinha = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lpLinha.topMargin = dp(8);
-        info.addView(linhaBotoes, lpLinha);
+        LinearLayout.LayoutParams lpItem2 = new LinearLayout.LayoutParams(dp(300), dp(46));
+        lpItem2.topMargin = dp(10);
+        esquerda.addView(itemMods, lpItem2);
 
-        // Setas dos lados
-        botaoEsq = seta("<", -1);
-        FrameLayout.LayoutParams lpEsq = new FrameLayout.LayoutParams(
-                dp(56), dp(120), Gravity.LEFT | Gravity.CENTER_VERTICAL);
-        lpEsq.leftMargin = dp(10);
-        menu.addView(botaoEsq, lpEsq);
+        status = texto("", 12, Color.WHITE, true);
+        status.setGravity(Gravity.LEFT);
+        status.setShadowLayer(4f, 0f, 1f, Color.BLACK);
+        LinearLayout.LayoutParams lpStatus = new LinearLayout.LayoutParams(dp(300),
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lpStatus.topMargin = dp(10);
+        esquerda.addView(status, lpStatus);
 
-        botaoDir = seta(">", 1);
-        FrameLayout.LayoutParams lpDir = new FrameLayout.LayoutParams(
-                dp(56), dp(120), Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        lpDir.rightMargin = dp(10);
-        menu.addView(botaoDir, lpDir);
-
-        // Título do app (topo, esquerda)
-        TextView topo = texto("SONIC ORIGINS (UNOFFICIAL)", 13, Color.rgb(220, 228, 250), true);
-        topo.setShadowLayer(4f, 0f, 1f, Color.BLACK);
-        FrameLayout.LayoutParams lpTopo = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.LEFT);
-        lpTopo.topMargin = dp(10);
-        lpTopo.leftMargin = dp(12);
-        menu.addView(topo, lpTopo);
+        // Capa do jogo no alto à direita
+        capa = new ImageView(this);
+        capa.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        FrameLayout.LayoutParams lpCapa = new FrameLayout.LayoutParams(
+                dp(135), dp(190), Gravity.TOP | Gravity.RIGHT);
+        lpCapa.topMargin = dp(46);
+        lpCapa.rightMargin = dp(28);
+        pagina.addView(capa, lpCapa);
 
         // Botões do topo, à direita: música e configurações
         LinearLayout barraTopo = new LinearLayout(this);
@@ -591,17 +641,42 @@ public class Inicio extends Activity {
         FrameLayout.LayoutParams lpBarra = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.RIGHT);
-        lpBarra.topMargin = dp(6);
-        lpBarra.rightMargin = dp(10);
+        lpBarra.topMargin = dp(8);
+        lpBarra.rightMargin = dp(14);
         menu.addView(barraTopo, lpBarra);
 
-        // Pontinhos (qual jogo está na tela)
-        pontos = texto("", 16, Color.WHITE, false);
+        // Setas nos cantos de baixo
+        botaoEsq = seta("<", -1);
+        FrameLayout.LayoutParams lpEsq = new FrameLayout.LayoutParams(
+                dp(52), dp(52), Gravity.BOTTOM | Gravity.LEFT);
+        lpEsq.leftMargin = dp(16);
+        lpEsq.bottomMargin = dp(12);
+        menu.addView(botaoEsq, lpEsq);
+
+        botaoDir = seta(">", 1);
+        FrameLayout.LayoutParams lpDir = new FrameLayout.LayoutParams(
+                dp(52), dp(52), Gravity.BOTTOM | Gravity.RIGHT);
+        lpDir.rightMargin = dp(16);
+        lpDir.bottomMargin = dp(12);
+        menu.addView(botaoDir, lpDir);
+
+        // Pontinhos do carrossel, embaixo no centro
+        pontosLayout = new LinearLayout(this);
+        pontosLayout.setOrientation(LinearLayout.HORIZONTAL);
+        pontosLayout.setGravity(Gravity.CENTER);
+        pontosViews = new View[JOGOS.length];
+        for (int i = 0; i < JOGOS.length; i++) {
+            View d = new View(this);
+            LinearLayout.LayoutParams lpd = new LinearLayout.LayoutParams(dp(9), dp(9));
+            lpd.setMargins(dp(5), 0, dp(5), 0);
+            pontosLayout.addView(d, lpd);
+            pontosViews[i] = d;
+        }
         FrameLayout.LayoutParams lpPontos = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        lpPontos.bottomMargin = dp(6);
-        menu.addView(pontos, lpPontos);
+        lpPontos.bottomMargin = dp(26);
+        menu.addView(pontosLayout, lpPontos);
 
         // Botão de permissão (só aparece sem acesso aos arquivos)
         botaoAcesso = new Button(this);
@@ -614,12 +689,31 @@ public class Inicio extends Activity {
         });
         FrameLayout.LayoutParams lpAcesso = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        lpAcesso.topMargin = dp(40);
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lpAcesso.bottomMargin = dp(60);
         menu.addView(botaoAcesso, lpAcesso);
 
         raiz.addView(menu, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    // Pontinhos: o jogo atual fica maior e dourado
+    private void atualizarPontos() {
+        for (int i = 0; i < pontosViews.length; i++) {
+            boolean ativo = (i == atual);
+            GradientDrawable g = new GradientDrawable();
+            g.setShape(GradientDrawable.OVAL);
+            g.setColor(ativo ? Color.parseColor("#FFD23A") : Color.parseColor("#99FFFFFF"));
+            if (ativo) {
+                g.setStroke(dp(1), Color.WHITE);
+            }
+            pontosViews[i].setBackground(g);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pontosViews[i].getLayoutParams();
+            int tam = dp(ativo ? 13 : 9);
+            lp.width = tam;
+            lp.height = tam;
+            pontosViews[i].setLayoutParams(lp);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -865,28 +959,53 @@ public class Inicio extends Activity {
     // Configurações (idioma e arquivos visuais)
     // ------------------------------------------------------------------
     private void abrirConfig() {
-        String[] itens = new String[]{
-                ingles() ? "Language: English  (tap for Português)"
-                        : "Idioma: Português  (toque para English)",
-                t("Trocar logo do Sonic Origins (tela inicial)", "Change Sonic Origins logo (start screen)"),
-                t("Trocar logo do aviso (créditos)", "Change notice logo (credits)"),
-                t("Trocar fundo (vídeo)", "Change background (video)"),
-                t("Trocar música", "Change music")
-        };
+        final ArrayList<String> itens = new ArrayList<String>();
+        final ArrayList<Integer> acoes = new ArrayList<Integer>();
+        final int jogoAlvo = atual;
+
+        itens.add(ingles() ? "Language: English  (tap for Português)"
+                : "Idioma: Português  (toque para English)");
+        acoes.add(0);
+        itens.add(t("Trocar logo do Sonic Origins (tela inicial)", "Change Sonic Origins logo (start screen)"));
+        acoes.add(1);
+        itens.add(t("Trocar logo do aviso (créditos)", "Change notice logo (credits)"));
+        acoes.add(2);
+        itens.add(t("Trocar fundo (vídeo)", "Change background (video)"));
+        acoes.add(3);
+        itens.add(t("Trocar música", "Change music"));
+        acoes.add(4);
+        if (estado == ESTADO_MENU) {
+            itens.add(t("Trocar capa: ", "Change cover: ") + JOGOS[jogoAlvo]);
+            acoes.add(5);
+            itens.add(t("Trocar logo: ", "Change logo: ") + JOGOS[jogoAlvo]);
+            acoes.add(6);
+        }
+        itens.add(t("Sonic CD - renderizador: ", "Sonic CD - renderer: ")
+                + (prefs.getBoolean("hw", true) ? "HW" : "SW")
+                + t("  (toque para trocar)", "  (tap to switch)"));
+        acoes.add(7);
+
         new AlertDialog.Builder(this)
                 .setTitle(t("Configurações", "Settings"))
-                .setItems(itens, new DialogInterface.OnClickListener() {
+                .setItems(itens.toArray(new String[itens.size()]), new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface d, int which) {
-                        if (which == 0) {
+                        int a = acoes.get(which).intValue();
+                        if (a == 0) {
                             trocarIdioma();
-                        } else if (which == 1) {
+                        } else if (a == 1) {
                             escolherArquivo("image/*", REQ_ORIGINS);
-                        } else if (which == 2) {
+                        } else if (a == 2) {
                             escolherArquivo("image/*", REQ_AVISO);
-                        } else if (which == 3) {
+                        } else if (a == 3) {
                             escolherArquivo("video/*", REQ_FUNDO);
-                        } else if (which == 4) {
+                        } else if (a == 4) {
                             escolherArquivo("audio/*", REQ_MUSICA);
+                        } else if (a == 5) {
+                            escolherArquivo("image/*", REQ_CAPA + jogoAlvo);
+                        } else if (a == 6) {
+                            escolherArquivo("image/*", REQ_LOGO + jogoAlvo);
+                        } else if (a == 7) {
+                            alternarRender();
                         }
                     }
                 })
@@ -905,14 +1024,9 @@ public class Inicio extends Activity {
     // ------------------------------------------------------------------
     // Renderizador do Sonic CD (HW = hardware, SW = software)
     // ------------------------------------------------------------------
-    private void atualizarBotaoRender() {
-        bRender.setText(prefs.getBoolean("hw", true) ? "Render: HW" : "Render: SW");
-    }
-
     private void alternarRender() {
         boolean hw = !prefs.getBoolean("hw", true);
         prefs.edit().putBoolean("hw", hw).apply();
-        atualizarBotaoRender();
         Toast.makeText(this, hw ? t("Sonic CD: renderizador de hardware (HW)", "Sonic CD: hardware renderer (HW)")
                 : t("Sonic CD: renderizador de software (SW)", "Sonic CD: software renderer (SW)"),
                 Toast.LENGTH_SHORT).show();
@@ -1183,19 +1297,7 @@ public class Inicio extends Activity {
         titulo.setText(JOGOS[atual]);
         botaoEsq.setVisibility(atual > 0 ? View.VISIBLE : View.INVISIBLE);
         botaoDir.setVisibility(atual < JOGOS.length - 1 ? View.VISIBLE : View.INVISIBLE);
-
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < JOGOS.length; i++) {
-            sb.append(i == atual ? "\u25CF" : "\u25CB");
-            if (i < JOGOS.length - 1) {
-                sb.append("  ");
-            }
-        }
-        pontos.setText(sb.toString());
-
-        // Só o Sonic CD tem a opção de renderizador
-        bRender.setVisibility(atual == 2 ? View.VISIBLE : View.GONE);
-        atualizarBotaoRender();
+        atualizarPontos();
 
         carregarCapa();
         carregarLogo();
@@ -1265,7 +1367,7 @@ public class Inicio extends Activity {
             capa.setImageBitmap(bmp);
         } else {
             capa.setImageDrawable(null);
-            capa.setBackgroundColor(Color.parseColor("#9914309E"));
+            capa.setBackgroundColor(Color.parseColor("#55000000"));
         }
     }
 
@@ -1294,19 +1396,17 @@ public class Inicio extends Activity {
         if (temAcesso()) {
             File f = achar("origins_logo", EXT_IMG);
             if (f != null) {
-                bmp = decodificar(f.getAbsolutePath(), 2);
+                bmp = decodificar(f.getAbsolutePath(), 1);
             }
         }
         if (bmp != null) {
             logoOrigins.setImageBitmap(bmp);
             logoOrigins.setVisibility(View.VISIBLE);
-            textoOrigins.setVisibility(View.GONE);
-            subOrigins.setVisibility(View.GONE);
+            fallbackOrigins.setVisibility(View.GONE);
         } else {
             logoOrigins.setImageDrawable(null);
             logoOrigins.setVisibility(View.GONE);
-            textoOrigins.setVisibility(View.VISIBLE);
-            subOrigins.setVisibility(View.VISIBLE);
+            fallbackOrigins.setVisibility(View.VISIBLE);
         }
     }
 
